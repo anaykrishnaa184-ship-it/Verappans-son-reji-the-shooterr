@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="ml">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VEERAPPAN'S SON THE SHOOTER</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: #0d0d11;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Courier New', Courier, monospace;
+            color: #fff;
+            padding: 10px;
+        }
+
+        #game-wrapper {
+            position: relative;
+            width: 100%;
+            max-width: 800px;
+            background-color: #1a1a24;
+            border: 3px solid #ffcc00;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 0 20px rgba(255, 204, 0, 0.3);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        #start-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(13, 13, 17, 0.98);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+            padding: 15px;
+            text-align: center;
+        }
+
+        #start-screen h1 {
+            color: #ff9900;
+            font-size: 20px;
+            margin-bottom: 20px;
+            text-shadow: 2px 2px #ff0000;
+        }
+
+        #play-btn {
+            background: linear-gradient(135deg, #00cc66, #009944);
+            color: white;
+            border: none;
+            padding: 14px 40px;
+            font-size: 20px;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 8px;
+            box-shadow: 0 4px #005522;
+        }
+
+        #play-btn:active {
+            transform: translateY(2px);
+            box-shadow: 0 2px #005522;
+        }
+
+        canvas {
+            width: 100%;
+            height: 320px;
+            background: linear-gradient(to bottom, #111, #252538);
+            display: block;
+        }
+
+        .ui-panel {
+            width: 100%;
+            padding: 10px 15px;
+            background-color: #111;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-top: 2px solid #333;
+        }
+
+        .score-board {
+            font-size: 18px;
+            font-weight: bold;
+            color: #00ffcc;
+        }
+
+        #shoot-btn {
+            background: linear-gradient(135deg, #ff3333, #cc0000);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 6px;
+            box-shadow: 0 4px #880000;
+        }
+
+        #shoot-btn:active {
+            transform: translateY(2px);
+            box-shadow: 0 2px #880000;
+        }
+
+        #unlock-banner {
+            position: absolute;
+            top: 30%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(255, 204, 0, 0.95);
+            color: #000;
+            padding: 15px 25px;
+            border-radius: 8px;
+            font-size: 18px;
+            font-weight: bold;
+            text-align: center;
+            border: 3px solid #fff;
+            box-shadow: 0 0 15px #ffcc00;
+            display: none;
+            z-index: 5;
+        }
+
+        #alert-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 0, 0, 0.4);
+            animation: blink 0.3s infinite alternate;
+            display: none;
+            z-index: 4;
+            pointer-events: none;
+        }
+
+        @keyframes blink {
+            0% { opacity: 0.2; }
+            100% { opacity: 0.8; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-wrapper">
+        <div id="start-screen">
+            <h1>WELCOME TO VEERAPPAN'S SON THE SHOOTER</h1>
+            <button id="play-btn">PLAY GAME</button>
+        </div>
+
+        <div id="alert-screen"></div>
+        <div id="unlock-banner"></div>
+
+        <canvas id="gameCanvas" width="800" height="400"></canvas>
+
+        <div class="ui-panel">
+            <div class="score-board">SCORE: <span id="scoreVal">0</span></div>
+            <button id="shoot-btn">SHOOT</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+        const scoreVal = document.getElementById("scoreVal");
+        const shootBtn = document.getElementById("shoot-btn");
+        const playBtn = document.getElementById("play-btn");
+        const startScreen = document.getElementById("start-screen");
+        const unlockBanner = document.getElementById("unlock-banner");
+        const alertScreen = document.getElementById("alert-screen");
+
+        let score = 0;
+        let isGameOver = false;
+        let gameStarted = false;
+        let isPaused = false;
+
+        let unlocked100 = false;
+        let unlocked200 = false;
+        let unlocked300 = false;
+        let unlocked500 = false;
+
+        let player = { x: 50, y: 250, width: 40, height: 70 };
+        let bullets = [];
+        let dinos = [];
+        let dinoSpawnTimer = 0;
+
+        let audioCtx = null;
+
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        function playProySound() {
+            try {
+                initAudio();
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(300, audioCtx.currentTime);
+                osc.frequency.linearRampToValueAtTime(150, audioCtx.currentTime + 0.12);
+                gain.gain.setValueAtTime(0.5, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.12);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.12);
+            } catch (e) {
+                // Ignore audio context errors if blocked
+            }
+        }
+
+        function speakText(text, lang = 'en-US') {
+            if ('speechSynthesis' in window) {
+                window.speechSynthesis.cancel();
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = lang;
+                utterance.rate = 0.9;
+                window.speechSynthesis.speak(utterance);
+            }
+        }
+
+        function triggerUnlock(message, isRedAlert = false, lang = 'en-US') {
+            isPaused = true;
+            unlockBanner.innerText = message;
+            unlockBanner.style.display = "block";
+
+            if (isRedAlert) {
+                alertScreen.style.display = "block";
+            }
+
+            speakText(message, lang);
+
+            setTimeout(() => {
+                unlockBanner.style.display = "none";
+                alertScreen.style.display = "none";
+                isPaused = false;
+                requestAnimationFrame(update);
+            }, 2500);
+        }
+
+        playBtn.addEventListener("click", () => {
+            initAudio();
+            startScreen.style.display = "none";
+            gameStarted = true;
+            resetGame();
+            update();
+        });
+
+        function resetGame() {
+            score = 0;
+            isGameOver = false;
+            isPaused = false;
+            unlocked100 = false;
+            unlocked200 = false;
+            unlocked300 = false;
+            unlocked500 = false;
+            bullets = [];
+            dinos = [];
+            scoreVal.innerText = score;
+        }
+
+        function shootBullet() {
+            if (!gameStarted || isGameOver || isPaused) return;
+            
+            let isLaser = score >= 500;
+            bullets.push({
+                x: player.x + player.width,
+                y: player.y + 25,
+                width: isLaser ? 24 : 16,
+                height: isLaser ? 10 : 8,
+                speed: isLaser ? 14 : 10,
+                isLaser: isLaser
+            });
+        }
+
+        shootBtn.addEventListener("click", shootBullet);
+        window.addEventListener("keydown", (e) => {
+            if (e.code === "Space") shootBullet();
+        });
+
+        function spawnDino() {
+            let hp = 1;
+            let speedVal = 3 + Math.random() * 2;
+
+            if (score >= 500) {
+                hp = 3;
+                speedVal = 5 + Math.random() * 2;
+            } else if (score >= 300) {
+                hp = 2;
+                speedVal = 4.5 + Math.random() * 2;
+            }
+
+            dinos.push({
+                x: canvas.width,
+                y: 270,
+                width: 45,
+                height: 50,
+                speed: speedVal,
+                hp: hp,
+                maxHp: hp
+            });
+        }
+
+        function drawPlayer() {
+            ctx.fillStyle = "#ffcc99";
+            ctx.fillRect(player.x + 10, player.y, 20, 20); // Head
+            
+            ctx.fillStyle = "#000";
+            ctx.fillRect(player.x + 10, player.y, 20, 6); // Hair
+            ctx.fillRect(player.x + 4, player.y + 12, 32, 7); // Moustache
+
+            ctx.fillStyle = score >= 500 ? "#ff8800" : "#0066cc";
+            ctx.fillRect(player.x + 5, player.y + 20, 30, 28); // Shirt
+
+            ctx.fillStyle = score >= 500 ? "#00ffff" : "#333";
+            ctx.fillRect(player.x + 25, player.y + 25, score >= 500 ? 25 : 20, score >= 500 ? 10 : 8); // Gun
+
+            ctx.fillStyle = "#111";
+            ctx.fillRect(player.x + 8, player.y + 48, 10, 22);
+            ctx.fillRect(player.x + 22, player.y + 48, 10, 22); // Legs
+        }
+
+        function drawDinos() {
+            dinos.forEach(dino => {
+                if (dino.hp === 3) {
+                    ctx.fillStyle = "#9900ff";
+                } else if (dino.hp === 2) {
+                    ctx.fillStyle = "#ff0055";
+                } else {
+                    ctx.fillStyle = "#ff5500";
+                }
+
+                ctx.fillRect(dino.x + 15, dino.y, 25, 18);
+                ctx.fillStyle = "#fff";
+                ctx.fillRect(dino.x + 25, dino.y + 4, 5, 5);
+                
+                ctx.fillStyle = dino.hp === 3 ? "#440088" : (dino.hp === 2 ? "#990033" : "#cc0000");
+                ctx.fillRect(dino.x, dino.y + 18, 35, 22);
+                ctx.fillRect(dino.x + 5, dino.y + 40, 8, 10);
+                ctx.fillRect(dino.x + 22, dino.y + 40, 8, 10);
+            });
+        }
+
+        function drawBullets() {
+            bullets.forEach(bullet => {
+                ctx.fillStyle = bullet.isLaser ? "#00ffff" : "#ffff00";
+                ctx.fillRect(bullet.x, bullet.y, bullet.width, bullet.height);
+            });
+        }
+
+        function update() {
+            if (!gameStarted || isGameOver || isPaused) return;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            ctx.fillStyle = score >= 500 ? "#884400" : "#008833";
+            ctx.fillRect(0, 320, canvas.width, 80);
+
+            bullets.forEach((bullet, index) => {
+                bullet.x += bullet.speed;
+                if (bullet.x > canvas.width) bullets.splice(index, 1);
+            });
+
+            dinoSpawnTimer++;
+            let spawnInterval = score >= 500 ? 40 : (score >= 300 ? 50 : 70);
+            if (dinoSpawnTimer > spawnInterval) {
+                spawnDino();
+                dinoSpawnTimer = 0;
+            }
+
+            dinos.forEach((dino, dinoIndex) => {
+                dino.x -= dino.speed;
+
+                if (
+                    player.x < dino.x + dino.width &&
+                    player.x + player.width > dino.x &&
+                    player.y < dino.y + dino.height &&
+                    player.y + player.height > dino.y
+                ) {
+                    isGameOver = true;
+                }
+
+                bullets.forEach((bullet, bulletIndex) => {
+                    if (
+                        bullet.x < dino.x + dino.width &&
+                        bullet.x + bullet.width > dino.x &&
+                        bullet.y < dino.y + dino.height &&
+                        bullet.y + dino.height > dino.y
+                    ) {
+                        bullets.splice(bulletIndex, 1);
+                        dino.hp--;
+                        playProySound();
+
+                        if (dino.hp <= 0) {
+                            dinos.splice(dinoIndex, 1);
+                            score += 10;
+                            scoreVal.innerText = score;
+
+                            if (score === 100 && !unlocked100) {
+                                unlocked100 = true;
+                                triggerUnlock("THE ULTIMATE GINGER ROJI UNLOCKED");
+                            } else if (score === 200 && !unlocked200) {
+                                unlocked200 = true;
+                                triggerUnlock("God of Ginger is unlocked");
+                            } else if (score === 300 && !unlocked300) {
+                                unlocked300 = true;
+                                triggerUnlock("പിടികിട്ടാപ്പുള്ളി റോജിയുടെ കളികൾ", true, 'ml-IN');
+                            } else if (score === 500 && !unlocked500) {
+                                unlocked500 = true;
+                                triggerUnlock("കർഷകനാണ് ചേട്ടാ ഇഞ്ചി പറിക്കാൻ ഇറങ്ങിയതാ", true, 'ml-IN');
+                            }
+                        }
+                    }
+                });
+
+                if (dino.x + dino.width < 0) {
+                    dinos.splice(dinoIndex, 1);
+                }
+            });
+
+            drawPlayer();
+            drawDinos();
+            drawBullets();
+
+            if (isGameOver) {
+                ctx.fillStyle = "rgba(0, 0, 0, 0.85)";
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = "#ff3333";
+                ctx.font = "28px 'Courier New'";
+                ctx.textAlign = "center";
+                ctx.fillText("GAME OVER", canvas.width / 2, canvas.height / 2 - 10);
+                ctx.fillStyle = "#fff";
+                ctx.font = "14px 'Courier New'";
+                ctx.fillText("Page Refresh ചെയ്ത് വീണ്ടും കളിക്കുക", canvas.width / 2, canvas.height / 2 + 30);
+                return;
+            }
+
+            requestAnimationFrame(update);
+        }
+    </script>
+</body>
+</html>
